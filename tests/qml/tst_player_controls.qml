@@ -41,7 +41,7 @@ TestCase {
     function test_playPauseButtonCallsController() {
         var item = createControls()
         var button = findChild(item, "playPauseButton")
-        mouseClick(button)
+        button.clicked()
         verify(fakeController.toggled)
         item.destroy()
     }
