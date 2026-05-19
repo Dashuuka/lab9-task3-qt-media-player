@@ -81,6 +81,7 @@ ApplicationWindow {
         }
 
         PlayerControls {
+            controller: appController
             Layout.fillWidth: true
         }
     }

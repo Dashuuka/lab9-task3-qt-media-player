@@ -36,7 +36,11 @@ jobs:
         shell: pwsh
         run: cmake --build build --config Release
 
-      - name: Run C++/Qt tests
+      - name: List CTest tests
+        shell: pwsh
+        run: ctest --test-dir build -N -C Release
+
+      - name: Run C++/Qt and QML tests
         shell: pwsh
         run: ctest --test-dir build --output-on-failure -C Release
 
@@ -47,6 +51,14 @@ jobs:
           path: |
             build/**/*.exe
             build/**/*.dll
+          if-no-files-found: ignore
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: task3-qt-test-logs
+          path: build/Testing/**
           if-no-files-found: ignore
 
   webassembly-placeholder:
