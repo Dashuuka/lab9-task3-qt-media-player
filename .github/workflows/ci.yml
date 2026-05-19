@@ -54,8 +54,14 @@ jobs:
 
       - name: Run C++/Qt and QML tests
         shell: cmd
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+          QSG_RHI_BACKEND: software
+          QML2_IMPORT_PATH: ${{ github.workspace }}\qml;${{ github.workspace }}\build\qml
+          QT_QML_IMPORT_PATH: ${{ github.workspace }}\qml;${{ github.workspace }}\build\qml
         run: |
-          ctest --test-dir build --output-on-failure -C Release
+          ctest --test-dir build --output-on-failure -C Release -V
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
