@@ -36,9 +36,19 @@ add_test(NAME task3_qt_media_player_tests COMMAND task3_qt_media_player_tests)
 if(TARGET Qt6::qmltestrunner)
     add_test(
         NAME task3_qml_ui_tests
-        COMMAND Qt6::qmltestrunner -input ${CMAKE_CURRENT_SOURCE_DIR}/qml -import ${CMAKE_SOURCE_DIR}/qml
+        COMMAND ${CMAKE_COMMAND} -E env
+            "QT_QPA_PLATFORM=offscreen"
+            "QT_QUICK_BACKEND=software"
+            "QSG_RHI_BACKEND=software"
+            "QML2_IMPORT_PATH=${CMAKE_SOURCE_DIR}/qml"
+            "QT_QML_IMPORT_PATH=${CMAKE_SOURCE_DIR}/qml"
+            "$<TARGET_FILE:Qt6::qmltestrunner>"
+            -input "${CMAKE_CURRENT_SOURCE_DIR}/qml"
+            -import "${CMAKE_SOURCE_DIR}/qml"
+            -o -,txt
     )
+
     set_tests_properties(task3_qml_ui_tests PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
     )
 endif()
