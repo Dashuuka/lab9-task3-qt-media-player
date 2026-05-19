@@ -55,13 +55,17 @@ jobs:
       - name: Run C++/Qt and QML tests
         shell: cmd
         env:
-          QT_QPA_PLATFORM: offscreen
           QT_QUICK_BACKEND: software
           QSG_RHI_BACKEND: software
-          QML2_IMPORT_PATH: ${{ github.workspace }}\qml;${{ github.workspace }}\build\qml
-          QT_QML_IMPORT_PATH: ${{ github.workspace }}\qml;${{ github.workspace }}\build\qml
         run: |
           ctest --test-dir build --output-on-failure -C Release -V
+
+      - name: Print QML test output
+        if: always()
+        shell: cmd
+        run: |
+          if exist build\tests\qml-ui-test-result.txt type build\tests\qml-ui-test-result.txt
+          if exist build\Testing\Temporary\LastTest.log type build\Testing\Temporary\LastTest.log
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -78,7 +82,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: task3-qt-test-logs
-          path: build/Testing/**
+          path: |
+            build/Testing/**
+            build/tests/qml-ui-test-result.txt
           if-no-files-found: ignore
 
   webassembly-placeholder:
