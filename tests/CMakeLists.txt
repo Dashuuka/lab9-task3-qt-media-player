@@ -34,18 +34,20 @@ target_link_libraries(task3_qt_media_player_tests PRIVATE Qt6::Test Qt6::Sql)
 add_test(NAME task3_qt_media_player_tests COMMAND task3_qt_media_player_tests)
 
 if(TARGET Qt6::qmltestrunner)
+    set(QML_TEST_OUTPUT "${CMAKE_BINARY_DIR}/tests/qml-ui-test-result.txt")
+
     add_test(
         NAME task3_qml_ui_tests
         COMMAND ${CMAKE_COMMAND} -E env
-            "QT_QPA_PLATFORM=offscreen"
             "QT_QUICK_BACKEND=software"
             "QSG_RHI_BACKEND=software"
             "QML2_IMPORT_PATH=${CMAKE_SOURCE_DIR}/qml"
             "QT_QML_IMPORT_PATH=${CMAKE_SOURCE_DIR}/qml"
+            "QML_IMPORT_TRACE=1"
             "$<TARGET_FILE:Qt6::qmltestrunner>"
             -input "${CMAKE_CURRENT_SOURCE_DIR}/qml"
             -import "${CMAKE_SOURCE_DIR}/qml"
-            -o -,txt
+            -o "${QML_TEST_OUTPUT},txt"
     )
 
     set_tests_properties(task3_qml_ui_tests PROPERTIES
