@@ -14,35 +14,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          modules: qtmultimedia
+          arch: 'win64_msvc2022_64'
+          modules: 'qtmultimedia qtshadertools'
           cache: true
 
       - name: Print tool versions
-        shell: pwsh
+        shell: cmd
         run: |
+          where cl
+          cl
+          where cmake
           cmake --version
-          qmake --version
-          if (Get-Command qt-cmake -ErrorAction SilentlyContinue) { qt-cmake --version }
+          where qt-cmake
+          qt-cmake --version
 
       - name: Configure
-        shell: pwsh
-        run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+        shell: cmd
+        run: |
+          qt-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
 
       - name: Build
-        shell: pwsh
-        run: cmake --build build --config Release
+        shell: cmd
+        run: |
+          cmake --build build --config Release
 
       - name: List CTest tests
-        shell: pwsh
-        run: ctest --test-dir build -N -C Release
+        shell: cmd
+        run: |
+          ctest --test-dir build -N -C Release
 
       - name: Run C++/Qt and QML tests
-        shell: pwsh
-        run: ctest --test-dir build --output-on-failure -C Release
+        shell: cmd
+        run: |
+          ctest --test-dir build --output-on-failure -C Release
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -51,6 +64,7 @@ jobs:
           path: |
             build/**/*.exe
             build/**/*.dll
+            build/**/*.qml
           if-no-files-found: ignore
 
       - name: Upload test logs
@@ -70,12 +84,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Print tool versions
-        run: |
-          cmake --version || true
-          qmake --version || true
-          qt-cmake --version || true
-
       - name: WebAssembly note
         run: |
           echo "Qt WebAssembly build requires a Qt Wasm kit and Emscripten."
@@ -89,13 +97,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Print tool versions
-        run: |
-          java -version || true
-          cmake --version || true
-          qmake --version || true
-          qt-cmake --version || true
 
       - name: Android note
         run: |
