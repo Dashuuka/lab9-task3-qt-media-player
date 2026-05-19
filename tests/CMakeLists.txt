@@ -39,26 +39,14 @@ if(TARGET Qt6::qmltestrunner)
     add_test(
         NAME task3_qml_ui_tests
         COMMAND ${CMAKE_COMMAND} -E env
-<<<<<<< HEAD
-            "QT_QPA_PLATFORM=offscreen"
-=======
->>>>>>> d8a61eb156593b0ce690d5a340ea52bdae18fb8c
             "QT_QUICK_BACKEND=software"
             "QSG_RHI_BACKEND=software"
             "QML2_IMPORT_PATH=${CMAKE_SOURCE_DIR}/qml"
             "QT_QML_IMPORT_PATH=${CMAKE_SOURCE_DIR}/qml"
-<<<<<<< HEAD
-            "$<TARGET_FILE:Qt6::qmltestrunner>"
-            -input "${CMAKE_CURRENT_SOURCE_DIR}/qml"
-            -import "${CMAKE_SOURCE_DIR}/qml"
-            -o -,txt
-=======
-            "QML_IMPORT_TRACE=1"
             "$<TARGET_FILE:Qt6::qmltestrunner>"
             -input "${CMAKE_CURRENT_SOURCE_DIR}/qml"
             -import "${CMAKE_SOURCE_DIR}/qml"
             -o "${QML_TEST_OUTPUT},txt"
->>>>>>> d8a61eb156593b0ce690d5a340ea52bdae18fb8c
     )
 
     set_tests_properties(task3_qml_ui_tests PROPERTIES
