@@ -5,64 +5,102 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   windows-desktop:
-    name: Windows Desktop build and tests
+    name: Windows Desktop build, tests and deploy
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          modules: qtmultimedia
+          arch: win64_msvc2022_64
+          modules: qtmultimedia qtshadertools
           cache: true
 
       - name: Print tool versions
-        shell: pwsh
+        shell: cmd
         run: |
+          where cl
+          cl
+          where cmake
           cmake --version
-          qmake --version
-          if (Get-Command qt-cmake -ErrorAction SilentlyContinue) { qt-cmake --version }
+          where qt-cmake
+          qt-cmake --version
+          where windeployqt
+          windeployqt --version
 
       - name: Configure
-        shell: pwsh
-        run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+        shell: cmd
+        run: qt-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
 
       - name: Build
-        shell: pwsh
+        shell: cmd
         run: cmake --build build --config Release
 
       - name: List CTest tests
-        shell: pwsh
+        shell: cmd
         run: ctest --test-dir build -N -C Release
 
       - name: Run C++/Qt and QML tests
-        shell: pwsh
-        run: ctest --test-dir build --output-on-failure -C Release
+        shell: cmd
+        env:
+          QT_QUICK_BACKEND: software
+          QSG_RHI_BACKEND: software
+        run: ctest --test-dir build --output-on-failure -C Release -V
 
-      - name: Upload Windows artifacts
+      - name: Deploy runnable Windows folder with windeployqt
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build -Recurse -Filter task3_qt_media_player.exe |
+            Where-Object { $_.FullName -notmatch "\\tests\\" } |
+            Select-Object -First 1
+          if (-not $exe) { throw "task3_qt_media_player.exe was not found" }
+          New-Item -ItemType Directory -Force -Path build/deploy | Out-Null
+          Copy-Item -LiteralPath $exe.FullName -Destination build/deploy/task3_qt_media_player.exe -Force
+          windeployqt --qmldir qml --dir build/deploy $exe.FullName
+          Copy-Item -Recurse -Force -LiteralPath qml -Destination build/deploy/qml
+
+      - name: Print QML test output
+        if: always()
+        shell: cmd
+        run: |
+          if exist build\tests\qml-ui-test-result.txt type build\tests\qml-ui-test-result.txt
+          if exist build\Testing\Temporary\LastTest.log type build\Testing\Temporary\LastTest.log
+
+      - name: Upload runnable Windows Desktop artifact
         uses: actions/upload-artifact@v4
         with:
-          name: task3-qt-windows-desktop
-          path: |
-            build/**/*.exe
-            build/**/*.dll
-          if-no-files-found: ignore
+          name: task3-qt-windows-runnable-deploy
+          path: build/deploy/**
+          if-no-files-found: error
 
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: task3-qt-test-logs
-          path: build/Testing/**
+          path: |
+            build/Testing/**
+            build/tests/qml-ui-test-result.txt
           if-no-files-found: ignore
 
-  webassembly-placeholder:
-    name: Qt WebAssembly placeholder
+  webassembly-experimental:
+    name: Qt WebAssembly experimental build (continue-on-error)
     runs-on: ubuntu-latest
     continue-on-error: true
 
@@ -70,34 +108,87 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Qt WebAssembly kit
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          target: wasm
+          arch: wasm_singlethread
+          modules: qtmultimedia qtshadertools
+          cache: true
+
       - name: Print tool versions
         run: |
-          cmake --version || true
-          qmake --version || true
-          qt-cmake --version || true
+          cmake --version
+          qt-cmake --version
+          emcc --version || true
 
-      - name: WebAssembly note
+      - name: Configure WebAssembly
+        run: qt-cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build WebAssembly
+        run: cmake --build build-wasm --config Release
+
+      - name: Prepare Pages content
         run: |
-          echo "Qt WebAssembly build requires a Qt Wasm kit and Emscripten."
-          echo "Install Qt with wasm_32 target and configure with the generated qt-cmake toolchain."
+          mkdir -p pages/lab9-task3-qt-media-player
+          find build-wasm -maxdepth 3 \( -name "*.html" -o -name "*.js" -o -name "*.wasm" -o -name "*.data" \) -exec cp {} pages/lab9-task3-qt-media-player/ \;
+          if [ ! -f pages/lab9-task3-qt-media-player/index.html ]; then
+            first_html="$(find pages/lab9-task3-qt-media-player -name '*.html' | head -n 1)"
+            if [ -n "$first_html" ]; then
+              cp "$first_html" pages/lab9-task3-qt-media-player/index.html
+            else
+              echo "<html><body><h1>task3_qt_media_player</h1><p>Qt WebAssembly build completed but no html launcher was found.</p></body></html>" > pages/lab9-task3-qt-media-player/index.html
+            fi
+          fi
 
-  android-placeholder:
-    name: Qt Android placeholder
+      - name: Upload experimental WebAssembly artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: task3-qt-webassembly-experimental
+          path: build-wasm/**
+          if-no-files-found: ignore
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - name: Deploy Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/deploy-pages@v4
+
+  android-not-automated:
+    name: Qt Android build not automated
     runs-on: ubuntu-latest
     continue-on-error: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Print tool versions
-        run: |
-          java -version || true
-          cmake --version || true
-          qmake --version || true
-          qt-cmake --version || true
 
       - name: Android note
         run: |
-          echo "Qt Android build requires Android SDK/NDK plus a matching Qt Android kit."
-          echo "The Windows Desktop job is the primary working CI build for this project."
+          echo "Qt Android build is not treated as an automated artifact here."
+          echo "It requires Android SDK/NDK plus a matching Qt Android kit and deployment settings."
+          echo "No secrets are needed, but the generated Qt Android packaging is environment-sensitive."
+
+  ios-not-automated:
+    name: Qt iOS simulator build not automated
+    runs-on: macos-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: iOS note
+        run: |
+          xcodebuild -version
+          echo "Qt iOS simulator build is not automated for this CMake/QML project."
+          echo "It requires a Qt iOS kit from the Qt online installer and Xcode simulator configuration."
