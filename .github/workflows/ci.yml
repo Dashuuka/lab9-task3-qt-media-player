@@ -1,0 +1,91 @@
+name: task3_qt_media_player CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows-desktop:
+    name: Windows Desktop build and tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          modules: qtmultimedia
+          cache: true
+
+      - name: Print tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          qmake --version
+          if (Get-Command qt-cmake -ErrorAction SilentlyContinue) { qt-cmake --version }
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Run C++/Qt tests
+        shell: pwsh
+        run: ctest --test-dir build --output-on-failure -C Release
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: task3-qt-windows-desktop
+          path: |
+            build/**/*.exe
+            build/**/*.dll
+          if-no-files-found: ignore
+
+  webassembly-placeholder:
+    name: Qt WebAssembly placeholder
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Print tool versions
+        run: |
+          cmake --version || true
+          qmake --version || true
+          qt-cmake --version || true
+
+      - name: WebAssembly note
+        run: |
+          echo "Qt WebAssembly build requires a Qt Wasm kit and Emscripten."
+          echo "Install Qt with wasm_32 target and configure with the generated qt-cmake toolchain."
+
+  android-placeholder:
+    name: Qt Android placeholder
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Print tool versions
+        run: |
+          java -version || true
+          cmake --version || true
+          qmake --version || true
+          qt-cmake --version || true
+
+      - name: Android note
+        run: |
+          echo "Qt Android build requires Android SDK/NDK plus a matching Qt Android kit."
+          echo "The Windows Desktop job is the primary working CI build for this project."
