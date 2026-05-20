@@ -73,6 +73,69 @@ jobs:
             build/appGuessNumberX
             build/guessnumberx-linux-x64.tar.gz
 
+  windows:
+    name: Windows (Desktop + tests + deploy)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt (Windows desktop)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          modules: qtshadertools qtmultimedia qt5compat
+          cache: true
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Run tests (unit + widget + integration)
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          ctest --test-dir build --output-on-failure --verbose -C Release
+
+      - name: Stage runnable Windows app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item -LiteralPath build\appGuessNumberX.exe -Destination package\appGuessNumberX.exe -Force
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" `
+            --release `
+            --compiler-runtime `
+            --qmldir "$pwd\qml" `
+            package\appGuessNumberX.exe
+          if (-not (Test-Path -LiteralPath package\appGuessNumberX.exe)) {
+            throw "Windows executable was not staged."
+          }
+          if (-not (Test-Path -LiteralPath package\platforms\qwindows.dll)) {
+            throw "Qt Windows platform plugin was not deployed."
+          }
+          if (-not (Test-Path -LiteralPath package\Qt6Core.dll)) {
+            throw "Qt runtime DLLs were not deployed."
+          }
+          Get-ChildItem -Recurse package | Select-Object FullName, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guessnumberx-windows-runnable
+          path: package/**
+          if-no-files-found: error
+
   android:
     name: Android (APK)
     runs-on: ubuntu-22.04
