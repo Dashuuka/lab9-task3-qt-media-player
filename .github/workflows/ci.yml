@@ -2,6 +2,7 @@ name: task3_qt_media_player CI
 
 on:
   push:
+    branches: [ main, master ]
   pull_request:
   workflow_dispatch:
 
@@ -10,9 +11,18 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: task3-pages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  QT_VERSION: 6.7.3
+  QT_WASM_VERSION: 6.7.3
+
 jobs:
   windows-desktop:
-    name: Windows Desktop build, tests and deploy
+    name: Windows Desktop build, tests and runnable deploy
     runs-on: windows-latest
 
     steps:
@@ -27,22 +37,10 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
-          arch: win64_msvc2022_64
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2019_64
           modules: qtmultimedia qtshadertools
           cache: true
-
-      - name: Print tool versions
-        shell: cmd
-        run: |
-          where cl
-          cl
-          where cmake
-          cmake --version
-          where qt-cmake
-          qt-cmake --version
-          where windeployqt
-          windeployqt --version
 
       - name: Configure
         shell: cmd
@@ -51,10 +49,6 @@ jobs:
       - name: Build
         shell: cmd
         run: cmake --build build --config Release
-
-      - name: List CTest tests
-        shell: cmd
-        run: ctest --test-dir build -N -C Release
 
       - name: Run C++/Qt and QML tests
         shell: cmd
@@ -75,13 +69,6 @@ jobs:
           windeployqt --qmldir qml --dir build/deploy $exe.FullName
           Copy-Item -Recurse -Force -LiteralPath qml -Destination build/deploy/qml
 
-      - name: Print QML test output
-        if: always()
-        shell: cmd
-        run: |
-          if exist build\tests\qml-ui-test-result.txt type build\tests\qml-ui-test-result.txt
-          if exist build\Testing\Temporary\LastTest.log type build\Testing\Temporary\LastTest.log
-
       - name: Upload runnable Windows Desktop artifact
         uses: actions/upload-artifact@v4
         with:
@@ -93,102 +80,281 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: task3-qt-test-logs
+          name: task3-qt-windows-test-logs
           path: |
             build/Testing/**
             build/tests/qml-ui-test-result.txt
           if-no-files-found: ignore
 
-  webassembly-experimental:
-    name: Qt WebAssembly experimental build (continue-on-error)
-    runs-on: ubuntu-latest
-    continue-on-error: true
+  linux-desktop:
+    name: Linux Desktop build and tests
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt WebAssembly kit
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build build-essential \
+            libgl1-mesa-dev libxkbcommon-dev libfontconfig1 libdbus-1-3 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-sync1 \
+            libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 \
+            libpulse-dev xvfb
+
+      - name: Install Qt Linux desktop
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
-          target: wasm
-          arch: wasm_singlethread
-          modules: qtmultimedia qtshadertools
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: qtshadertools qtmultimedia
           cache: true
 
-      - name: Print tool versions
+      - name: Configure
         run: |
-          cmake --version
-          qt-cmake --version
-          emcc --version || true
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
 
-      - name: Configure WebAssembly
-        run: qt-cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel
 
-      - name: Build WebAssembly
-        run: cmake --build build-wasm --config Release
-
-      - name: Prepare Pages content
+      - name: Run tests
         run: |
-          mkdir -p pages/lab9-task3-qt-media-player
-          find build-wasm -maxdepth 3 \( -name "*.html" -o -name "*.js" -o -name "*.wasm" -o -name "*.data" \) -exec cp {} pages/lab9-task3-qt-media-player/ \;
-          if [ ! -f pages/lab9-task3-qt-media-player/index.html ]; then
-            first_html="$(find pages/lab9-task3-qt-media-player -name '*.html' | head -n 1)"
-            if [ -n "$first_html" ]; then
-              cp "$first_html" pages/lab9-task3-qt-media-player/index.html
-            else
-              echo "<html><body><h1>task3_qt_media_player</h1><p>Qt WebAssembly build completed but no html launcher was found.</p></body></html>" > pages/lab9-task3-qt-media-player/index.html
-            fi
-          fi
+          cd build
+          xvfb-run -a ctest --output-on-failure --verbose
 
-      - name: Upload experimental WebAssembly artifact
+      - name: Package Linux app
+        run: |
+          cd build
+          tar -czf task3_qt_media_player-linux-x64.tar.gz task3_qt_media_player || true
+
+      - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: task3-qt-webassembly-experimental
-          path: build-wasm/**
-          if-no-files-found: ignore
+          name: task3-qt-linux
+          path: |
+            build/task3_qt_media_player
+            build/task3_qt_media_player-linux-x64.tar.gz
+          if-no-files-found: warn
 
-      - name: Configure Pages
-        if: github.event_name != 'pull_request'
-        uses: actions/configure-pages@v5
+  android:
+    name: Android APK
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install host Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: qtshadertools qtmultimedia
+          cache: true
+
+      - name: Save host Qt path
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
+
+      - name: Install Android Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: android
+          arch: android_arm64_v8a
+          modules: qtshadertools qtmultimedia
+          cache: true
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          yes | sdkmanager --install "ndk;26.1.10909125" "platforms;android-34" "build-tools;34.0.0"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+          sudo rm -rf "$ANDROID_HOME/platforms/android-35"* "$ANDROID_HOME/platforms/android-36"* || true
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-android \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
+            -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
+            -DANDROID_PLATFORM=android-23 \
+            -DANDROID_ABI=arm64-v8a
+
+      - name: Build
+        run: cmake --build build-android --parallel
+
+      - name: Build APK
+        run: |
+          cd build-android
+          cmake --build . --target apk || true
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: task3-qt-android
+          path: |
+            build-android/android-build/build/outputs/apk/**/*.apk
+            build-android/android-build/*.apk
+          if-no-files-found: warn
+
+  web:
+    name: WebAssembly build and Pages artifact
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Emscripten 3.1.50
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.50
+
+      - name: Install host Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_WASM_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: qtshadertools qtmultimedia
+          cache: true
+
+      - name: Save host Qt path
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
+
+      - name: Install Qt for WebAssembly
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_WASM_VERSION }}
+          host: all_os
+          target: wasm
+          arch: wasm_singlethread
+          modules: qtshadertools qtmultimedia
+          cache: true
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-wasm \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake"
+
+      - name: Build
+        run: cmake --build build-wasm --parallel
+
+      - name: Stage Web bundle
+        run: |
+          mkdir -p site
+          cp build-wasm/task3_qt_media_player.js site/ 2>/dev/null || true
+          cp build-wasm/task3_qt_media_player.wasm site/ 2>/dev/null || true
+          cp build-wasm/task3_qt_media_player.html site/index.html 2>/dev/null || true
+          cp build-wasm/qtloader.js site/ 2>/dev/null || true
+          cp build-wasm/qtlogo.svg site/ 2>/dev/null || true
+          touch site/.nojekyll
+          ls -la site/
+          test -f site/index.html
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: task3-qt-web
+          path: site/
+          if-no-files-found: error
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: pages
+          path: site/
 
-      - name: Deploy Pages
-        if: github.event_name != 'pull_request'
+  deploy-pages:
+    name: Deploy Web to GitHub Pages
+    needs: web
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
         uses: actions/deploy-pages@v4
 
-  android-not-automated:
-    name: Qt Android build not automated
-    runs-on: ubuntu-latest
-    continue-on-error: true
+  ios:
+    name: iOS device build
+    runs-on: macos-14
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Android note
+      - name: Install host Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: desktop
+          arch: clang_64
+          modules: qtshadertools qtmultimedia
+          cache: true
+
+      - name: Save host Qt path
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
+
+      - name: Install iOS Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: ios
+          modules: qtshadertools qtmultimedia
+          cache: true
+
+      - name: Configure
         run: |
-          echo "Qt Android build is not treated as an automated artifact here."
-          echo "It requires Android SDK/NDK plus a matching Qt Android kit and deployment settings."
-          echo "No secrets are needed, but the generated Qt Android packaging is environment-sensitive."
+          cmake -S . -B build-ios -G Xcode \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
+            -DCMAKE_OSX_ARCHITECTURES="arm64" \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
 
-  ios-not-automated:
-    name: Qt iOS simulator build not automated
-    runs-on: macos-latest
-    continue-on-error: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: iOS note
+      - name: Build
         run: |
-          xcodebuild -version
-          echo "Qt iOS simulator build is not automated for this CMake/QML project."
-          echo "It requires a Qt iOS kit from the Qt online installer and Xcode simulator configuration."
+          cmake --build build-ios --config Release --parallel -- \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: task3-qt-ios
+          path: |
+            build-ios/Release-iphoneos/*.app
+            build-ios/**/*.app
+          if-no-files-found: warn
