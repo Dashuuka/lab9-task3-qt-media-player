@@ -1,0 +1,49 @@
+# Build directories
+build/
+build-*/
+out/
+cmake-build-*/
+
+# Qt
+*.user
+*.user.*
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qm
+*_qmlcache.cpp
+.qt/
+.qtc_clangd/
+.qmake.stash
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# IDE
+.qtcreator/
+.vscode/
+.idea/
+*.iml
+*.swp
+*~
+
+# Mac/OS
+.DS_Store
+Thumbs.db
+
+# Android
+local.properties
+.gradle/
+android-build/
+
+# Web
+*.wasm.map
+emsdk/
+
+# Local installer logs
+*.log

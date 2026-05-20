@@ -1,88 +1,50 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
-import QtQuick.Layouts
-import Lab9MediaPlayer
+import QtQuick.Window
+import "android" as A
+import "ios" as I
+import "linux" as L
+import "web" as W
 
 ApplicationWindow {
-    id: root
-    width: 1040
-    height: 680
+    id: window
+    width: platformInfo.isMobile ? 400 : 1000
+    height: platformInfo.isMobile ? 720 : 700
+    minimumWidth: 320
+    minimumHeight: 480
     visible: true
-    title: qsTr("Media Player")
+    title: qsTr("Guess the Number — Cross-Platform")
 
-    property string language: "ru"
-
-    menuBar: MenuBar {
-        Menu {
-            title: qsTr("File")
-            Action { text: qsTr("Open folder"); shortcut: "Ctrl+O"; onTriggered: folderDialog.open() }
-            Action { text: qsTr("Add file"); onTriggered: fileDialog.open() }
-        }
-        Menu {
-            title: qsTr("Language")
-            Action { text: "RU"; onTriggered: root.language = "ru" }
-            Action { text: "EN"; onTriggered: root.language = "en" }
-            Action { text: "BE"; onTriggered: root.language = "be" }
-        }
-    }
-
-    FolderDialog {
-        id: folderDialog
-        onAccepted: appController.scanFolder(selectedFolder)
-    }
-
-    FileDialog {
-        id: fileDialog
-        fileMode: FileDialog.OpenFiles
-        nameFilters: ["Audio files (*.mp3 *.wav *.ogg *.m4a *.flac)"]
-        onAccepted: {
-            for (let i = 0; i < selectedFiles.length; i++) {
-                appController.addFile(selectedFiles[i])
-            }
-        }
-    }
-
-    Shortcut { sequence: "Space"; onActivated: appController.togglePlayback() }
-    Shortcut { sequence: "Left"; onActivated: appController.seek(Math.max(0, appController.position - 5000)) }
-    Shortcut { sequence: "Right"; onActivated: appController.seek(Math.min(appController.duration, appController.position + 5000)) }
-
-    DropArea {
+    // Platform router. Resolves to a single UI implementation
+    // for the current target. On Web, picks Android vs Linux
+    // based on viewport size (responsive layout).
+    Loader {
+        id: uiLoader
         anchors.fill: parent
-        onDropped: function(drop) {
-            if (drop.hasUrls) {
-                for (let i = 0; i < drop.urls.length; i++) {
-                    appController.addFile(drop.urls[i])
-                }
+        sourceComponent: {
+            if (platformInfo.isAndroid) return androidPage
+            if (platformInfo.isIos) return iosPage
+            if (platformInfo.isWeb) {
+                return window.width < 720 ? androidPage : linuxPage
             }
+            return linuxPage
         }
+
+        // Smooth swap when Web resizes across the breakpoint
+        Behavior on opacity { NumberAnimation { duration: 180 } }
     }
 
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 12
-        spacing: 10
+    Component { id: androidPage; A.AndroidUI {} }
+    Component { id: iosPage; I.IosUI {} }
+    Component { id: linuxPage; L.LinuxUI {} }
+    Component { id: webPage; W.WebUI {} }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Button { text: qsTr("Open folder"); onClicked: folderDialog.open() }
-            Button { text: qsTr("Add file"); onClicked: fileDialog.open() }
-            Label {
-                Layout.fillWidth: true
-                color: "crimson"
-                text: appController.errorMessage
-                elide: Text.ElideRight
-            }
-        }
-
-        PlaylistPage {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-        }
-
-        PlayerControls {
-            controller: appController
-            Layout.fillWidth: true
+    Connections {
+        target: localizer
+        function onLocaleChanged() {
+            // QML strings retranslate via QQmlEngine::retranslate() automatically;
+            // the title binding is re-evaluated.
+            window.title = qsTr("Guess the Number — Cross-Platform")
         }
     }
 }
